@@ -1,11 +1,25 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { Task, Session, AppSettings, defaultSettings } from '@/types';
+
+export interface TimerState {
+  elapsed: number;
+  isRunning: boolean;
+  currentTaskId: string | null;
+  currentTaskName: string | null;
+  start: (taskId: string, taskName: string) => void;
+  pause: () => void;
+  resume: () => void;
+  stop: () => number;
+  reset: () => void;
+  formatTime: (secs: number) => string;
+}
 
 interface AppContextType {
   tasks: Task[];
   sessions: Session[];
   completions: Record<string, boolean>;
   settings: AppSettings;
+  timer: TimerState;
   addTask: (task: Omit<Task, 'id'>) => Task;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
@@ -38,6 +52,67 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<Session[]>(() => load('app_sessions', []));
   const [completions, setCompletions] = useState<Record<string, boolean>>(() => load('app_completions', {}));
   const [settings, setSettings] = useState<AppSettings>(() => load('app_settings', defaultSettings));
+
+  // Timer state - lives in context so it persists across navigation
+  const [timerElapsed, setTimerElapsed] = useState(0);
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [timerTaskId, setTimerTaskId] = useState<string | null>(null);
+  const [timerTaskName, setTimerTaskName] = useState<string | null>(null);
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (timerRunning) {
+      timerIntervalRef.current = setInterval(() => {
+        setTimerElapsed(prev => prev + 1);
+      }, 1000);
+    } else if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+    return () => {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    };
+  }, [timerRunning]);
+
+  const timerStart = useCallback((taskId: string, taskName: string) => {
+    setTimerTaskId(taskId);
+    setTimerTaskName(taskName);
+    setTimerElapsed(0);
+    setTimerRunning(true);
+  }, []);
+  const timerPause = useCallback(() => setTimerRunning(false), []);
+  const timerResume = useCallback(() => setTimerRunning(true), []);
+  const timerStop = useCallback(() => {
+    setTimerRunning(false);
+    return timerElapsed;
+  }, [timerElapsed]);
+  const timerReset = useCallback(() => {
+    setTimerElapsed(0);
+    setTimerRunning(false);
+    setTimerTaskId(null);
+    setTimerTaskName(null);
+  }, []);
+  const formatTime = useCallback((secs: number) => {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    if (h > 0) return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    if (m > 0) return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    return `${s.toString().padStart(2, '0')}`;
+  }, []);
+
+  const timer: TimerState = {
+    elapsed: timerElapsed,
+    isRunning: timerRunning,
+    currentTaskId: timerTaskId,
+    currentTaskName: timerTaskName,
+    start: timerStart,
+    pause: timerPause,
+    resume: timerResume,
+    stop: timerStop,
+    reset: timerReset,
+    formatTime,
+  };
 
   useEffect(() => localStorage.setItem('app_tasks', JSON.stringify(tasks)), [tasks]);
   useEffect(() => localStorage.setItem('app_sessions', JSON.stringify(sessions)), [sessions]);
@@ -121,7 +196,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      tasks, sessions, completions, settings,
+      tasks, sessions, completions, settings, timer,
       addTask, updateTask, deleteTask, getTasksForDate, addTaskToDate,
       addSession, getSessionsForDate,
       toggleTaskCompletion, isTaskCompleted, setTaskCompleted,

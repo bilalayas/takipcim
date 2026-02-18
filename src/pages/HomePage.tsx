@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { ChevronDown, Coffee, Play, CheckCircle2, Plus, Search, Zap } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
-import { useTimer } from '@/hooks/useTimer';
 import { Button } from '@/components/ui/button';
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger,
@@ -21,8 +20,8 @@ export default function HomePage() {
   const {
     tasks, getTasksForDate, addTask, addTaskToDate, addSession,
     getSessionsForDate, setTaskCompleted, isTaskCompleted, settings, updateSettings,
+    timer,
   } = useApp();
-  const timer = useTimer();
 
   const [accordionOpen, setAccordionOpen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -40,14 +39,25 @@ export default function HomePage() {
   // Break state
   const [isOnBreak, setIsOnBreak] = useState(false);
   const [breakStart, setBreakStart] = useState<number | null>(null);
-  const [breakLimit, setBreakLimit] = useState<number | null>(null); // seconds
+  const [breakLimit, setBreakLimit] = useState<number | null>(null);
   const [breakElapsed, setBreakElapsed] = useState(0);
   const [dontAskBreak, setDontAskBreak] = useState(false);
+
+  // Summary carousel
+  const [summaryIndex, setSummaryIndex] = useState(0);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
   const todayStr = today();
   const todayTasks = getTasksForDate(todayStr);
   const todaySessions = getSessionsForDate(todayStr);
   const selectedTask = tasks.find(t => t.id === selectedTaskId);
+
+  // Sync selectedTaskId with timer's current task
+  useEffect(() => {
+    if (timer.currentTaskId && !selectedTaskId) {
+      setSelectedTaskId(timer.currentTaskId);
+    }
+  }, [timer.currentTaskId, selectedTaskId]);
 
   // Break timer
   useEffect(() => {
@@ -58,7 +68,6 @@ export default function HomePage() {
     return () => clearInterval(interval);
   }, [isOnBreak, breakStart]);
 
-  // Check if break is over
   useEffect(() => {
     if (isOnBreak && breakLimit && breakElapsed >= breakLimit) {
       endBreak();
@@ -71,7 +80,6 @@ export default function HomePage() {
   const totalBreak = breakSessions.reduce((sum, s) => sum + s.duration, 0) + (isOnBreak ? breakElapsed : 0);
   const completedCount = todayTasks.filter(t => isTaskCompleted(t.id, todayStr)).length;
 
-  // Unplanned tasks (not assigned to today)
   const unplannedTasks = tasks.filter(t => !t.dates.includes(todayStr));
   const filteredUnplanned = searchQuery
     ? unplannedTasks.filter(t => t.name.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -122,7 +130,6 @@ export default function HomePage() {
   };
 
   const startBreak = (minutes: number | null) => {
-    // Save current work session
     const duration = timer.stop();
     if (selectedTask && duration > 0) {
       addSession({
@@ -140,7 +147,6 @@ export default function HomePage() {
     setBreakLimit(minutes ? minutes * 60 : null);
     setBreakElapsed(0);
     setShowBreakDialog2(false);
-
     if (dontAskBreak) {
       updateSettings({ askBreakTimer: false });
     }
@@ -205,6 +211,17 @@ export default function HomePage() {
     : (breakElapsed % 60) / 60;
   const breakDashOffset = circumference * (1 - breakRingProgress);
 
+  // Swipe handlers for summary carousel
+  const handleTouchStart = (e: React.TouchEvent) => setTouchStartX(e.touches[0].clientX);
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX === null) return;
+    const diff = touchStartX - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 50) {
+      setSummaryIndex(diff > 0 ? 1 : 0);
+    }
+    setTouchStartX(null);
+  };
+
   return (
     <div className="px-4 pt-6 flex flex-col min-h-[calc(100vh-5rem)]">
       {/* TOP: Today's Tasks Accordion */}
@@ -261,7 +278,6 @@ export default function HomePage() {
                       <DrawerTitle>Görev Ekle</DrawerTitle>
                     </DrawerHeader>
                     <div className="px-4 pb-8 space-y-3">
-                      {/* Unplanned tasks */}
                       {filteredUnplanned.length > 0 && (
                         <div>
                           <p className="text-xs text-muted-foreground mb-2">Bugün planlanmayan görevler</p>
@@ -278,8 +294,6 @@ export default function HomePage() {
                           </div>
                         </div>
                       )}
-
-                      {/* Search */}
                       <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
                         <Input
@@ -289,8 +303,6 @@ export default function HomePage() {
                           className="pl-9"
                         />
                       </div>
-
-                      {/* New task */}
                       {showNewTaskInput ? (
                         <div className="flex gap-2">
                           <Input
@@ -311,8 +323,6 @@ export default function HomePage() {
                           Yeni görev oluştur
                         </button>
                       )}
-
-                      {/* Free work */}
                       <button
                         onClick={handleFreeWork}
                         className="flex items-center gap-2 w-full px-3 py-2.5 bg-accent rounded-xl text-sm text-accent-foreground hover:opacity-80 transition-opacity"
@@ -383,7 +393,6 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Break limit info */}
         {isOnBreak && breakLimit && (
           <p className="text-xs text-muted-foreground mt-2">
             {timer.formatTime(Math.max(0, breakLimit - breakElapsed))} kaldı
@@ -424,7 +433,6 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Break link */}
           {(timer.isRunning || (timer.elapsed > 0 && !isOnBreak)) && (
             <button
               onClick={handleBreakClick}
@@ -443,45 +451,73 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* BOTTOM: Day Summary */}
-      <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 mt-4">
-        <div className="min-w-[55%] bg-card rounded-2xl p-4 shadow-sm border border-border flex-shrink-0">
-          <p className="text-xs text-muted-foreground mb-1.5">Süre Özeti</p>
-          <div className="flex items-baseline gap-2 mb-2">
-            <span className="text-lg font-bold text-foreground">{timer.formatTime(totalWork)}</span>
-            <span className="text-[10px] text-muted-foreground">çalışma</span>
-          </div>
-          <div className="flex items-baseline gap-2 mb-2">
-            <span className="text-sm font-medium text-muted-foreground">{timer.formatTime(totalBreak)}</span>
-            <span className="text-[10px] text-muted-foreground">mola</span>
-          </div>
-          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary rounded-full transition-all duration-500"
-              style={{ width: `${totalWork + totalBreak > 0 ? (totalWork / (totalWork + totalBreak)) * 100 : 0}%` }}
-            />
+      {/* BOTTOM: Day Summary Carousel */}
+      <div className="mt-4 pb-2">
+        <div
+          className="relative overflow-hidden"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          <div
+            className="flex transition-transform duration-300 ease-out"
+            style={{ transform: `translateX(-${summaryIndex * 100}%)` }}
+          >
+            {/* Card 1 - Süre Özeti */}
+            <div className="w-full flex-shrink-0 px-1">
+              <div className="bg-card rounded-2xl p-5 shadow-sm border border-border">
+                <p className="text-xs text-muted-foreground mb-2">Süre Özeti</p>
+                <div className="flex items-baseline gap-2 mb-3">
+                  <span className="text-2xl font-bold text-foreground">{timer.formatTime(totalWork)}</span>
+                  <span className="text-xs text-muted-foreground">çalışma</span>
+                </div>
+                <div className="flex items-baseline gap-2 mb-3">
+                  <span className="text-lg font-medium text-muted-foreground">{timer.formatTime(totalBreak)}</span>
+                  <span className="text-xs text-muted-foreground">mola</span>
+                </div>
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all duration-500"
+                    style={{ width: `${totalWork + totalBreak > 0 ? (totalWork / (totalWork + totalBreak)) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Card 2 - Görev İlerlemesi */}
+            <div className="w-full flex-shrink-0 px-1">
+              <div className="bg-card rounded-2xl p-5 shadow-sm border border-border">
+                <p className="text-xs text-muted-foreground mb-2">Görev İlerlemesi</p>
+                <div className="flex items-baseline gap-1 mb-3">
+                  <span className="text-2xl font-bold text-foreground">{completedCount}</span>
+                  <span className="text-lg text-muted-foreground">/ {todayTasks.length}</span>
+                  <span className="text-xs text-muted-foreground ml-1">tamamlandı</span>
+                </div>
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all duration-500"
+                    style={{ width: `${todayTasks.length > 0 ? (completedCount / todayTasks.length) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="min-w-[45%] bg-card rounded-2xl p-4 shadow-sm border border-border flex-shrink-0">
-          <p className="text-xs text-muted-foreground mb-1.5">Görev İlerlemesi</p>
-          <div className="flex items-baseline gap-1 mb-2">
-            <span className="text-lg font-bold text-foreground">{completedCount}</span>
-            <span className="text-sm text-muted-foreground">/ {todayTasks.length}</span>
-            <span className="text-[10px] text-muted-foreground ml-1">tamamlandı</span>
-          </div>
-          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary rounded-full transition-all duration-500"
-              style={{ width: `${todayTasks.length > 0 ? (completedCount / todayTasks.length) * 100 : 0}%` }}
+        {/* Dot indicators */}
+        <div className="flex justify-center gap-1.5 mt-3">
+          {[0, 1].map(i => (
+            <button
+              key={i}
+              onClick={() => setSummaryIndex(i)}
+              className={`w-1.5 h-1.5 rounded-full transition-all duration-200 ${
+                summaryIndex === i ? 'bg-primary w-4' : 'bg-muted-foreground/30'
+              }`}
             />
-          </div>
+          ))}
         </div>
       </div>
 
       {/* DIALOGS */}
-
-      {/* Break Dialog 1 */}
       <AlertDialog open={showBreakDialog1} onOpenChange={setShowBreakDialog1}>
         <AlertDialogContent className="rounded-2xl max-w-sm mx-auto">
           <AlertDialogHeader>
@@ -515,7 +551,6 @@ export default function HomePage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Break Dialog 2 */}
       <AlertDialog open={showBreakDialog2} onOpenChange={setShowBreakDialog2}>
         <AlertDialogContent className="rounded-2xl max-w-sm mx-auto">
           <AlertDialogHeader>
@@ -570,7 +605,6 @@ export default function HomePage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Finish Dialog */}
       <AlertDialog open={showFinishDialog} onOpenChange={setShowFinishDialog}>
         <AlertDialogContent className="rounded-2xl max-w-sm mx-auto">
           <AlertDialogHeader>
