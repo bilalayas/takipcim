@@ -33,10 +33,7 @@ export default function SettingsPage() {
           <h3 className="text-sm font-semibold mb-3 text-card-foreground">Bildirim Ayarları</h3>
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Bildirimler</span>
-            <Switch
-              checked={settings.notifications}
-              onCheckedChange={v => updateSettings({ notifications: v })}
-            />
+            <Switch checked={settings.notifications} onCheckedChange={v => updateSettings({ notifications: v })} />
           </div>
         </div>
 
@@ -45,20 +42,12 @@ export default function SettingsPage() {
           <h3 className="text-sm font-semibold text-card-foreground">Mola Zamanlayıcı</h3>
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Zamanlayıcıyı göster</span>
-            <Switch
-              checked={settings.askBreakTimer}
-              onCheckedChange={v => updateSettings({ askBreakTimer: v })}
-            />
+            <Switch checked={settings.askBreakTimer} onCheckedChange={v => updateSettings({ askBreakTimer: v })} />
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Varsayılan mola süresi</span>
-            <Select
-              value={String(settings.defaultBreakDuration)}
-              onValueChange={v => updateSettings({ defaultBreakDuration: parseInt(v) })}
-            >
-              <SelectTrigger className="w-24 h-8 rounded-lg text-xs">
-                <SelectValue />
-              </SelectTrigger>
+            <Select value={String(settings.defaultBreakDuration)} onValueChange={v => updateSettings({ defaultBreakDuration: parseInt(v) })}>
+              <SelectTrigger className="w-24 h-8 rounded-lg text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="5">5 dk</SelectItem>
                 <SelectItem value="10">10 dk</SelectItem>
@@ -69,40 +58,71 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* Planning Hours */}
+        <div className="bg-card rounded-2xl p-4 border border-border shadow-sm space-y-3">
+          <h3 className="text-sm font-semibold text-card-foreground">Planlama</h3>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Saat aralığı</span>
+            <div className="flex items-center gap-2">
+              <Select value={String(settings.planningHourStart ?? 8)} onValueChange={v => updateSettings({ planningHourStart: parseInt(v) })}>
+                <SelectTrigger className="w-[76px] h-8 rounded-lg text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <SelectItem key={i} value={String(i)}>{String(i).padStart(2, '0')}:00</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground">–</span>
+              <Select value={String(settings.planningHourEnd ?? 20)} onValueChange={v => updateSettings({ planningHourEnd: parseInt(v) })}>
+                <SelectTrigger className="w-[76px] h-8 rounded-lg text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <SelectItem key={i} value={String(i)}>{String(i).padStart(2, '0')}:00</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        {/* Use Case */}
+        <div className="bg-card rounded-2xl p-4 border border-border shadow-sm space-y-3">
+          <h3 className="text-sm font-semibold text-card-foreground">Kullanım Amacı</h3>
+          <Select value={settings.useCase || 'free'} onValueChange={v => updateSettings({ useCase: v })}>
+            <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="exam">Sınav Hazırlığı</SelectItem>
+              <SelectItem value="university">Üniversite</SelectItem>
+              <SelectItem value="productivity">Genel Üretkenlik</SelectItem>
+              <SelectItem value="free">Serbest Kullanım</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         {/* Theme */}
         <div className="bg-card rounded-2xl p-4 border border-border shadow-sm space-y-3">
           <h3 className="text-sm font-semibold text-card-foreground">Tema</h3>
-
-          {/* Mode */}
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Mod</span>
             <div className="flex gap-1 bg-muted rounded-lg p-0.5">
               <button
                 onClick={() => updateSettings({ themeMode: 'light' })}
                 className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs transition-colors ${
-                  settings.themeMode === 'light'
-                    ? 'bg-card text-foreground shadow-sm font-medium'
-                    : 'text-muted-foreground'
+                  settings.themeMode === 'light' ? 'bg-card text-foreground shadow-sm font-medium' : 'text-muted-foreground'
                 }`}
               >
-                <Sun size={12} />
-                Light
+                <Sun size={12} /> Light
               </button>
               <button
                 onClick={() => updateSettings({ themeMode: 'dark' })}
                 className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs transition-colors ${
-                  settings.themeMode === 'dark'
-                    ? 'bg-card text-foreground shadow-sm font-medium'
-                    : 'text-muted-foreground'
+                  settings.themeMode === 'dark' ? 'bg-card text-foreground shadow-sm font-medium' : 'text-muted-foreground'
                 }`}
               >
-                <Moon size={12} />
-                Dark
+                <Moon size={12} /> Dark
               </button>
             </div>
           </div>
-
-          {/* Palette */}
           <div>
             <span className="text-sm text-muted-foreground block mb-2">Renk Paleti</span>
             <div className="grid grid-cols-2 gap-2">
@@ -137,8 +157,7 @@ export default function SettingsPage() {
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" className="flex-1 rounded-2xl h-11 text-destructive border-destructive/30 hover:bg-destructive/5">
-                <Trash2 size={14} className="mr-2" />
-                Veri Sıfırla
+                <Trash2 size={14} className="mr-2" /> Veri Sıfırla
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent className="rounded-2xl max-w-sm">
@@ -150,20 +169,13 @@ export default function SettingsPage() {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel className="rounded-xl">İptal</AlertDialogCancel>
-                <AlertDialogAction onClick={clearAllData} className="rounded-xl bg-destructive text-destructive-foreground">
-                  Sıfırla
-                </AlertDialogAction>
+                <AlertDialogAction onClick={clearAllData} className="rounded-xl bg-destructive text-destructive-foreground">Sıfırla</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
 
-          <Button
-            variant="outline"
-            className="flex-1 rounded-2xl h-11"
-            onClick={handleExport}
-          >
-            <Download size={14} className="mr-2" />
-            Veri Export
+          <Button variant="outline" className="flex-1 rounded-2xl h-11" onClick={handleExport}>
+            <Download size={14} className="mr-2" /> Veri Export
           </Button>
         </div>
       </div>

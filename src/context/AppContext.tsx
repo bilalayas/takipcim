@@ -51,7 +51,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>(() => load('app_tasks', []));
   const [sessions, setSessions] = useState<Session[]>(() => load('app_sessions', []));
   const [completions, setCompletions] = useState<Record<string, boolean>>(() => load('app_completions', {}));
-  const [settings, setSettings] = useState<AppSettings>(() => load('app_settings', defaultSettings));
+  const [settings, setSettings] = useState<AppSettings>(() => ({ ...defaultSettings, ...load('app_settings', defaultSettings) }));
 
   // Timer state - lives in context so it persists across navigation
   const [timerElapsed, setTimerElapsed] = useState(0);
