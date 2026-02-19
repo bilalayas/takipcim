@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="128" fill="#2D6B52"/>
+  <circle cx="256" cy="256" r="180" fill="none" stroke="#E8F5E9" stroke-width="12"/>
+  <path d="M256 120 L256 256 L340 340" fill="none" stroke="#E8F5E9" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="256" cy="256" r="16" fill="#E8F5E9"/>
+  <text x="256" y="440" font-family="system-ui, -apple-system, sans-serif" font-size="48" font-weight="bold" fill="#E8F5E9" text-anchor="middle">Takipcim</text>
+</svg>

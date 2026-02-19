@@ -1,0 +1,2 @@
+Bu dosya bir placeholder. Gerçek icon dosyaları kullanıcı tarafından eklenmelidir.
+Basit bir SVG icon oluşturulacak.

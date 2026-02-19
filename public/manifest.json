@@ -1,0 +1,51 @@
+{
+  "name": "Takipcim - Zaman Takip",
+  "short_name": "Takipcim",
+  "description": "Zamanınızı nasıl değerlendirdiğinizin detaylı resmini sunar",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAFAF8",
+  "theme_color": "#2D6B52",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "education", "lifestyle"],
+  "shortcuts": [
+    {
+      "name": "Yeni Görev Başlat",
+      "short_name": "Başlat",
+      "description": "Hızlıca yeni bir görev başlat",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Planlama",
+      "short_name": "Planla",
+      "description": "Görevlerini planla",
+      "url": "/planning",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}
