@@ -4,6 +4,7 @@ export interface Task {
   category?: string;
   plannedDuration?: number; // minutes
   dates: string[]; // YYYY-MM-DD
+  startHour?: number; // 0-23
 }
 
 export interface Session {
@@ -25,6 +26,8 @@ export interface AppSettings {
   notifications: boolean;
   askBreakTimer: boolean;
   defaultBreakDuration: number; // minutes
+  planningHourStart: number; // 0-23
+  planningHourEnd: number; // 0-23
   onboardingDone: boolean;
   useCase?: string;
 }
@@ -35,6 +38,8 @@ export const defaultSettings: AppSettings = {
   notifications: true,
   askBreakTimer: true,
   defaultBreakDuration: 5,
+  planningHourStart: 8,
+  planningHourEnd: 20,
   onboardingDone: false,
 };
 
