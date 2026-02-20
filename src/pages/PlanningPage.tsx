@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { format, getDaysInMonth } from 'date-fns';
-import { Plus, Trash2 } from 'lucide-react';
+import { format, getDaysInMonth, addMonths, subMonths } from 'date-fns';
+import { Plus, Trash2, List, Clock } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { useTemplates, TaskTemplate } from '@/hooks/useTemplates';
-import { Task } from '@/types';
+import { Task, YKS_TYT_SUBJECTS, YKS_AYT_SUBJECTS } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -23,7 +23,7 @@ const dayNames = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 
 export default function PlanningPage() {
   const {
-    getTasksForDate, addTask, deleteTask, toggleTaskCompletion,
+    tasks, getTasksForDate, addTask, updateTask, deleteTask, toggleTaskCompletion,
     isTaskCompleted, settings,
   } = useApp();
   const { templates, addTemplate, deleteTemplate } = useTemplates();
@@ -34,15 +34,20 @@ export default function PlanningPage() {
   const [selectedDay, setSelectedDay] = useState(now.getDate());
 
   const [fabOpen, setFabOpen] = useState(false);
-  const [drawerMode, setDrawerMode] = useState<'menu' | 'new' | 'templates' | 'createTemplate'>('menu');
+  const [drawerMode, setDrawerMode] = useState<'menu' | 'new' | 'templates' | 'createTemplate' | 'addExisting'>('menu');
   const [newName, setNewName] = useState('');
   const [newCategory, setNewCategory] = useState('');
   const [newDuration, setNewDuration] = useState('');
   const [newStartHour, setNewStartHour] = useState<string>('');
+  const [pendingHour, setPendingHour] = useState<number | null>(null);
 
   const [tplName, setTplName] = useState('');
   const [tplCategory, setTplCategory] = useState('');
   const [tplDuration, setTplDuration] = useState('');
+
+  // Drag and drop state
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverHour, setDragOverHour] = useState<number | null>(null);
 
   const selectedDayRef = useRef<HTMLButtonElement>(null);
 
@@ -61,8 +66,10 @@ export default function PlanningPage() {
   }, [selectedDay, selectedMonth, selectedYear]);
 
   const { planningHourStart = 8, planningHourEnd = 20 } = settings;
+  const planningMode = settings.planningMode ?? 'timestamp';
+
   const hours = useMemo(() =>
-    Array.from({ length: Math.max(planningHourEnd - planningHourStart, 1) }, (_, i) => planningHourStart + i),
+    Array.from({ length: Math.max(planningHourEnd - planningHourStart + 1, 1) }, (_, i) => planningHourStart + i),
     [planningHourStart, planningHourEnd]
   );
 
@@ -82,13 +89,18 @@ export default function PlanningPage() {
     [dayTasks]
   );
 
+  const allOtherTasks = useMemo(() =>
+    tasks.filter(t => !t.dates.includes(dateStr)),
+    [tasks, dateStr]
+  );
+
   const handleCreate = () => {
     if (!newName.trim()) return;
     addTask({
       name: newName.trim(),
       category: newCategory.trim() || undefined,
       plannedDuration: newDuration ? parseInt(newDuration) : undefined,
-      startHour: newStartHour ? parseInt(newStartHour) : undefined,
+      startHour: newStartHour && newStartHour !== 'none' ? parseInt(newStartHour) : undefined,
       dates: [dateStr],
     });
     resetForm();
@@ -120,145 +132,341 @@ export default function PlanningPage() {
   };
 
   const handleCreateAtHour = (hour: number) => {
+    setPendingHour(hour);
     setNewStartHour(String(hour));
-    setDrawerMode('new');
+    setDrawerMode('menu');
     setFabOpen(true);
+  };
+
+  const handleAddExistingAtHour = (hour: number) => {
+    setPendingHour(hour);
+    setDrawerMode('addExisting');
+    setFabOpen(true);
+  };
+
+  const handleAddExistingTask = (task: Task) => {
+    updateTask(task.id, { dates: [...task.dates, dateStr], startHour: pendingHour ?? undefined });
+    setFabOpen(false);
+    setDrawerMode('menu');
+    setPendingHour(null);
+  };
+
+  const handleAddUnscheduledToHour = (task: Task, hour: number) => {
+    updateTask(task.id, { startHour: hour });
   };
 
   const resetForm = () => {
     setNewName(''); setNewCategory(''); setNewDuration(''); setNewStartHour('');
+    setPendingHour(null);
+  };
+
+  // Drag & Drop
+  const handleDragStart = (taskId: string) => setDraggedTaskId(taskId);
+  const handleDragEnd = () => { setDraggedTaskId(null); setDragOverHour(null); };
+  const handleDragOver = (e: React.DragEvent, hour: number) => { e.preventDefault(); setDragOverHour(hour); };
+  const handleDrop = (e: React.DragEvent, hour: number) => {
+    e.preventDefault();
+    if (draggedTaskId) updateTask(draggedTaskId, { startHour: hour });
+    setDraggedTaskId(null);
+    setDragOverHour(null);
+  };
+
+  // Infinite date scroll
+  const buildDayList = () => {
+    const prevMonthDate = subMonths(new Date(selectedYear, selectedMonth, 1), 1);
+    const nextMonthDate = addMonths(new Date(selectedYear, selectedMonth, 1), 1);
+    const prevDays = getDaysInMonth(prevMonthDate);
+    const currDays = getDaysInMonth(new Date(selectedYear, selectedMonth, 1));
+    const nextDays = getDaysInMonth(nextMonthDate);
+
+    const result: { day: number; month: number; year: number; type: 'prev' | 'curr' | 'next' }[] = [];
+    for (let d = prevDays - 2; d <= prevDays; d++) {
+      result.push({ day: d, month: prevMonthDate.getMonth(), year: prevMonthDate.getFullYear(), type: 'prev' });
+    }
+    for (let d = 1; d <= currDays; d++) {
+      result.push({ day: d, month: selectedMonth, year: selectedYear, type: 'curr' });
+    }
+    for (let d = 1; d <= Math.min(3, nextDays); d++) {
+      result.push({ day: d, month: nextMonthDate.getMonth(), year: nextMonthDate.getFullYear(), type: 'next' });
+    }
+    return result;
+  };
+
+  const dayList = buildDayList();
+
+  const handleDaySelect = (entry: { day: number; month: number; year: number }) => {
+    setSelectedDay(entry.day);
+    setSelectedMonth(entry.month);
+    setSelectedYear(entry.year);
   };
 
   const dayOfWeek = dayNames[selectedDate.getDay()];
+
+  const yksSubjects = settings.useCase === 'university'
+    ? [...YKS_TYT_SUBJECTS, ...YKS_AYT_SUBJECTS]
+    : [];
 
   return (
     <div className="px-4 pt-6 flex flex-col h-[calc(100vh-5rem)]">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <h1 className="text-lg font-bold text-foreground">Planlama</h1>
-        <div className="flex items-center gap-1.5 text-sm">
-          <span className="font-bold text-foreground">{selectedDay}</span>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button className="text-foreground font-medium hover:text-primary transition-colors">
-                {monthNames[selectedMonth]}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-48 p-2 pointer-events-auto" align="end">
-              <div className="grid grid-cols-3 gap-1">
-                {monthNames.map((name, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setSelectedMonth(i)}
-                    className={`text-xs py-1.5 rounded-lg transition-colors ${
-                      selectedMonth === i ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'
-                    }`}
-                  >
-                    {name.slice(0, 3)}
-                  </button>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button className="text-foreground font-medium hover:text-primary transition-colors">
-                {selectedYear}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-36 p-2 pointer-events-auto" align="end">
-              <div className="grid grid-cols-2 gap-1">
-                {Array.from({ length: 6 }, (_, i) => now.getFullYear() - 1 + i).map(year => (
-                  <button
-                    key={year}
-                    onClick={() => setSelectedYear(year)}
-                    className={`text-xs py-1.5 rounded-lg transition-colors ${
-                      selectedYear === year ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'
-                    }`}
-                  >
-                    {year}
-                  </button>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-          <span className="text-xs text-muted-foreground">{dayOfWeek}</span>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
+            <button
+              onClick={() => {}}
+              className={`p-1.5 rounded-md transition-colors ${planningMode === 'timestamp' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}
+              title="Zaman Damgasına Göre"
+            >
+              <Clock size={13} className={planningMode === 'timestamp' ? 'text-primary' : 'text-muted-foreground'} />
+            </button>
+            <button
+              onClick={() => {}}
+              className={`p-1.5 rounded-md transition-colors ${planningMode === 'list' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}
+              title="Görevlere Göre"
+            >
+              <List size={13} className={planningMode === 'list' ? 'text-primary' : 'text-muted-foreground'} />
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5 text-sm">
+            <span className="font-bold text-foreground">{selectedDay}</span>
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="text-foreground font-medium hover:text-primary transition-colors">
+                  {monthNames[selectedMonth]}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 p-2 pointer-events-auto" align="end">
+                <div className="grid grid-cols-3 gap-1">
+                  {monthNames.map((name, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setSelectedMonth(i)}
+                      className={`text-xs py-1.5 rounded-lg transition-colors ${
+                        selectedMonth === i ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'
+                      }`}
+                    >
+                      {name.slice(0, 3)}
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="text-foreground font-medium hover:text-primary transition-colors">
+                  {selectedYear}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-36 p-2 pointer-events-auto" align="end">
+                <div className="grid grid-cols-2 gap-1">
+                  {Array.from({ length: 6 }, (_, i) => now.getFullYear() - 1 + i).map(year => (
+                    <button
+                      key={year}
+                      onClick={() => setSelectedYear(year)}
+                      className={`text-xs py-1.5 rounded-lg transition-colors ${
+                        selectedYear === year ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'
+                      }`}
+                    >
+                      {year}
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+            <span className="text-xs text-muted-foreground">{dayOfWeek}</span>
+          </div>
         </div>
       </div>
 
-      {/* Day selector */}
+      {/* Day selector — infinite scroll */}
       <div className="flex gap-1.5 overflow-x-auto scrollbar-hide mb-3 -mx-4 px-4 pb-1" onTouchStart={e => e.stopPropagation()}>
-        {Array.from({ length: totalDays }, (_, i) => i + 1).map(day => {
-          const d = new Date(selectedYear, selectedMonth, day);
-          const isSelected = day === selectedDay;
-          const isToday = day === now.getDate() && selectedMonth === now.getMonth() && selectedYear === now.getFullYear();
+        {dayList.map((entry, idx) => {
+          const d = new Date(entry.year, entry.month, entry.day);
+          const isSelected = entry.day === selectedDay && entry.month === selectedMonth && entry.year === selectedYear;
+          const isToday = entry.day === now.getDate() && entry.month === now.getMonth() && entry.year === now.getFullYear();
+          const isOtherMonth = entry.type !== 'curr';
           return (
             <button
-              key={day}
+              key={`${entry.year}-${entry.month}-${entry.day}-${idx}`}
               ref={isSelected ? selectedDayRef : undefined}
-              onClick={() => setSelectedDay(day)}
+              onClick={() => handleDaySelect(entry)}
               className={`flex flex-col items-center min-w-[40px] py-2 px-1 rounded-xl transition-all ${
                 isSelected
                   ? 'bg-primary text-primary-foreground'
                   : isToday
                   ? 'bg-accent text-accent-foreground'
+                  : isOtherMonth
+                  ? 'text-muted-foreground/40 hover:bg-accent/30'
                   : 'text-muted-foreground hover:bg-accent/50'
               }`}
             >
               <span className="text-[9px] font-medium">{dayNames[d.getDay()]}</span>
-              <span className={`text-sm ${isSelected ? 'font-bold' : 'font-medium'}`}>{day}</span>
+              <span className={`text-sm ${isSelected ? 'font-bold' : 'font-medium'}`}>{entry.day}</span>
+              {isOtherMonth && (
+                <span className="text-[8px] opacity-60">{monthNames[entry.month].slice(0, 3)}</span>
+              )}
             </button>
           );
         })}
       </div>
 
-      {/* Time grid */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide">
-        {unscheduledTasks.length > 0 && (
-          <div className="mb-3">
-            <p className="text-[10px] text-muted-foreground mb-1.5 uppercase tracking-wide">Zamanlanmamış</p>
-            <div className="space-y-1.5">
-              {unscheduledTasks.map(task => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  dateStr={dateStr}
-                  isCompleted={isTaskCompleted(task.id, dateStr)}
-                  onToggle={() => toggleTaskCompletion(task.id, dateStr)}
-                  onDelete={() => deleteTask(task.id)}
-                />
-              ))}
+      {/* LIST MODE */}
+      {planningMode === 'list' ? (
+        <div className="flex-1 overflow-y-auto scrollbar-hide space-y-2">
+          {dayTasks.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-sm text-muted-foreground">Bu gün için görev yok.</p>
             </div>
-          </div>
-        )}
-
-        {hours.map(hour => {
-          const hourTasks = tasksByHour[hour] || [];
-          return (
-            <div key={hour} className="flex min-h-[56px] border-t border-border/50">
-              <div className="w-12 pt-1.5 text-[11px] text-muted-foreground font-medium shrink-0">
-                {String(hour).padStart(2, '0')}:00
-              </div>
-              <div className="flex-1 py-1 space-y-1 min-h-[56px]">
-                {hourTasks.map(task => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    dateStr={dateStr}
-                    isCompleted={isTaskCompleted(task.id, dateStr)}
-                    onToggle={() => toggleTaskCompletion(task.id, dateStr)}
-                    onDelete={() => deleteTask(task.id)}
-                    compact
-                  />
+          )}
+          {settings.useCase === 'university' && dayTasks.length === 0 && yksSubjects.length > 0 && (
+            <div className="bg-card rounded-2xl p-4 border border-border shadow-sm">
+              <p className="text-xs text-muted-foreground mb-2">YKS Konuları — Hızlı Ekle</p>
+              <div className="flex flex-wrap gap-1.5">
+                {yksSubjects.slice(0, 8).map(subject => (
+                  <button
+                    key={subject}
+                    onClick={() => addTask({ name: subject, dates: [dateStr], category: subject.startsWith('TYT') ? 'TYT' : 'AYT' })}
+                    className="text-xs px-2.5 py-1 bg-accent text-accent-foreground rounded-lg hover:bg-primary/10 hover:text-primary transition-colors"
+                  >
+                    {subject}
+                  </button>
                 ))}
               </div>
-              <button onClick={() => handleCreateAtHour(hour)} className="self-start mt-1.5 p-1 text-muted-foreground/40 hover:text-primary transition-colors">
-                <Plus size={14} />
-              </button>
             </div>
-          );
-        })}
-      </div>
+          )}
+          {dayTasks.map(task => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              dateStr={dateStr}
+              isCompleted={isTaskCompleted(task.id, dateStr)}
+              onToggle={() => toggleTaskCompletion(task.id, dateStr)}
+              onDelete={() => deleteTask(task.id)}
+            />
+          ))}
+        </div>
+      ) : (
+        /* TIMESTAMP MODE */
+        <div className="flex-1 overflow-y-auto scrollbar-hide">
+          {unscheduledTasks.length > 0 && (
+            <div className="mb-3">
+              <p className="text-[10px] text-muted-foreground mb-1.5 uppercase tracking-wide">Zamanlanmamış</p>
+              <div className="space-y-1.5">
+                {unscheduledTasks.map(task => (
+                  <div
+                    key={task.id}
+                    draggable
+                    onDragStart={() => handleDragStart(task.id)}
+                    onDragEnd={handleDragEnd}
+                    className={`cursor-grab active:cursor-grabbing ${draggedTaskId === task.id ? 'opacity-50' : ''}`}
+                  >
+                    <TaskCard
+                      task={task}
+                      dateStr={dateStr}
+                      isCompleted={isTaskCompleted(task.id, dateStr)}
+                      onToggle={() => toggleTaskCompletion(task.id, dateStr)}
+                      onDelete={() => deleteTask(task.id)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {settings.useCase === 'university' && dayTasks.length === 0 && (
+            <div className="bg-card rounded-2xl p-3 border border-border shadow-sm mb-3">
+              <p className="text-xs text-muted-foreground mb-2">YKS Konuları — Hızlı Ekle</p>
+              <div className="flex flex-wrap gap-1.5">
+                {yksSubjects.slice(0, 6).map(subject => (
+                  <button
+                    key={subject}
+                    onClick={() => addTask({ name: subject, dates: [dateStr], category: subject.startsWith('TYT') ? 'TYT' : 'AYT' })}
+                    className="text-xs px-2.5 py-1 bg-accent text-accent-foreground rounded-lg hover:bg-primary/10 hover:text-primary transition-colors"
+                  >
+                    {subject}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {hours.map(hour => {
+            const hourTasks = tasksByHour[hour] || [];
+            const isDragTarget = dragOverHour === hour;
+            return (
+              <div
+                key={hour}
+                className={`flex min-h-[56px] border-t border-border/50 transition-colors ${isDragTarget ? 'bg-primary/5' : ''}`}
+                onDragOver={(e) => handleDragOver(e, hour)}
+                onDragLeave={() => setDragOverHour(null)}
+                onDrop={(e) => handleDrop(e, hour)}
+              >
+                <div className="w-12 pt-1.5 text-[11px] text-muted-foreground font-medium shrink-0">
+                  {String(hour).padStart(2, '0')}:00
+                </div>
+                <div className="flex-1 py-1 space-y-1 min-h-[56px]">
+                  {hourTasks.map(task => (
+                    <div
+                      key={task.id}
+                      draggable
+                      onDragStart={() => handleDragStart(task.id)}
+                      onDragEnd={handleDragEnd}
+                      className={`cursor-grab active:cursor-grabbing ${draggedTaskId === task.id ? 'opacity-50' : ''}`}
+                    >
+                      <TaskCard
+                        task={task}
+                        dateStr={dateStr}
+                        isCompleted={isTaskCompleted(task.id, dateStr)}
+                        onToggle={() => toggleTaskCompletion(task.id, dateStr)}
+                        onDelete={() => deleteTask(task.id)}
+                        compact
+                      />
+                    </div>
+                  ))}
+                  {isDragTarget && draggedTaskId && (
+                    <div className="h-10 border-2 border-dashed border-primary/50 rounded-xl flex items-center justify-center">
+                      <span className="text-xs text-primary">Buraya bırak</span>
+                    </div>
+                  )}
+                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="self-start mt-1.5 p-1 text-muted-foreground/40 hover:text-primary transition-colors">
+                      <Plus size={14} />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-44 p-1.5 pointer-events-auto" align="end" side="left">
+                    <button
+                      onClick={() => handleCreateAtHour(hour)}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded-lg hover:bg-accent transition-colors"
+                    >
+                      <Plus size={13} className="text-primary" /> Yeni Görev
+                    </button>
+                    {(unscheduledTasks.length > 0 || allOtherTasks.length > 0) && (
+                      <button
+                        onClick={() => handleAddExistingAtHour(hour)}
+                        className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded-lg hover:bg-accent transition-colors"
+                      >
+                        <List size={13} className="text-primary" /> Mevcut Görev Ekle
+                      </button>
+                    )}
+                    {unscheduledTasks.length > 0 && unscheduledTasks.slice(0, 3).map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => handleAddUnscheduledToHour(t, hour)}
+                        className="flex items-center gap-2 w-full px-3 py-2 text-xs rounded-lg hover:bg-accent transition-colors text-muted-foreground"
+                      >
+                        ↑ {t.name.length > 16 ? t.name.slice(0, 16) + '…' : t.name}
+                      </button>
+                    ))}
+                  </PopoverContent>
+                </Popover>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* FAB */}
       <button
@@ -269,12 +477,13 @@ export default function PlanningPage() {
       </button>
 
       {/* Drawer */}
-      <Drawer open={fabOpen} onOpenChange={(open) => { setFabOpen(open); if (!open) setDrawerMode('menu'); }}>
+      <Drawer open={fabOpen} onOpenChange={(open) => { setFabOpen(open); if (!open) { setDrawerMode('menu'); setPendingHour(null); } }}>
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>
-              {drawerMode === 'menu' ? 'Görev Ekle' :
+              {drawerMode === 'menu' ? `Görev Ekle${pendingHour !== null ? ` — ${String(pendingHour).padStart(2, '0')}:00` : ''}` :
                drawerMode === 'new' ? 'Yeni Görev' :
+               drawerMode === 'addExisting' ? 'Mevcut Görev Ekle' :
                drawerMode === 'templates' ? 'Şablonlar' : 'Şablon Oluştur'}
             </DrawerTitle>
           </DrawerHeader>
@@ -284,14 +493,81 @@ export default function PlanningPage() {
                 <button onClick={() => setDrawerMode('new')} className="flex items-center gap-3 w-full px-4 py-3 bg-card rounded-xl border border-border text-sm hover:bg-accent transition-colors">
                   <Plus size={16} className="text-primary" /> Yeni Görev
                 </button>
+                <button onClick={() => setDrawerMode('addExisting')} className="flex items-center gap-3 w-full px-4 py-3 bg-card rounded-xl border border-border text-sm hover:bg-accent transition-colors">
+                  📋 Mevcut Görevden Ekle
+                </button>
                 <button onClick={() => setDrawerMode('templates')} className="flex items-center gap-3 w-full px-4 py-3 bg-card rounded-xl border border-border text-sm hover:bg-accent transition-colors">
-                  📋 Şablon Kullan
+                  ✨ Şablon Kullan
                 </button>
                 <button onClick={() => setDrawerMode('createTemplate')} className="flex items-center gap-3 w-full px-4 py-3 bg-card rounded-xl border border-border text-sm hover:bg-accent transition-colors">
-                  ✨ Şablon Oluştur
+                  🔖 Şablon Oluştur
                 </button>
+                {settings.useCase === 'university' && yksSubjects.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">YKS Konuları</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {yksSubjects.map(subject => (
+                        <button
+                          key={subject}
+                          onClick={() => {
+                            addTask({ name: subject, dates: [dateStr], category: subject.startsWith('TYT') ? 'TYT' : 'AYT', startHour: pendingHour ?? undefined });
+                            setFabOpen(false);
+                            setDrawerMode('menu');
+                            setPendingHour(null);
+                          }}
+                          className="text-xs px-2.5 py-1.5 bg-accent text-accent-foreground rounded-lg hover:bg-primary/10 hover:text-primary transition-colors"
+                        >
+                          {subject}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </>
             )}
+
+            {drawerMode === 'addExisting' && (
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {unscheduledTasks.length === 0 && allOtherTasks.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">Eklenebilecek görev yok</p>
+                )}
+                {unscheduledTasks.length > 0 && (
+                  <>
+                    <p className="text-xs text-muted-foreground">Bu günün zamanlanmamış görevleri</p>
+                    {unscheduledTasks.map(task => (
+                      <button
+                        key={task.id}
+                        onClick={() => {
+                          if (pendingHour !== null) updateTask(task.id, { startHour: pendingHour });
+                          setFabOpen(false);
+                          setDrawerMode('menu');
+                          setPendingHour(null);
+                        }}
+                        className="w-full text-left px-3 py-2.5 bg-card rounded-xl text-sm hover:bg-accent transition-colors border border-border"
+                      >
+                        {task.name}
+                      </button>
+                    ))}
+                  </>
+                )}
+                {allOtherTasks.length > 0 && (
+                  <>
+                    <p className="text-xs text-muted-foreground mt-2">Diğer görevler</p>
+                    {allOtherTasks.slice(0, 10).map(task => (
+                      <button
+                        key={task.id}
+                        onClick={() => handleAddExistingTask(task)}
+                        className="w-full text-left px-3 py-2.5 bg-card rounded-xl text-sm hover:bg-accent transition-colors border border-border"
+                      >
+                        {task.name}
+                        {task.category && <span className="ml-2 text-xs text-muted-foreground">• {task.category}</span>}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+
             {drawerMode === 'new' && (
               <div className="space-y-3">
                 <Input placeholder="Görev adı *" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreate()} className="rounded-xl" autoFocus />
@@ -311,6 +587,7 @@ export default function PlanningPage() {
                 <Button onClick={handleCreate} disabled={!newName.trim()} className="w-full rounded-xl">Oluştur</Button>
               </div>
             )}
+
             {drawerMode === 'templates' && (
               <div className="space-y-2">
                 {templates.length === 0 && (
@@ -333,6 +610,7 @@ export default function PlanningPage() {
                 ))}
               </div>
             )}
+
             {drawerMode === 'createTemplate' && (
               <div className="space-y-3">
                 <Input placeholder="Şablon adı *" value={tplName} onChange={e => setTplName(e.target.value)} className="rounded-xl" autoFocus />
