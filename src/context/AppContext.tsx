@@ -6,6 +6,7 @@ export interface TimerState {
   isRunning: boolean;
   currentTaskId: string | null;
   currentTaskName: string | null;
+  startTimestamp: number | null;
   start: (taskId: string, taskName: string) => void;
   pause: () => void;
   resume: () => void;
@@ -53,45 +54,91 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [completions, setCompletions] = useState<Record<string, boolean>>(() => load('app_completions', {}));
   const [settings, setSettings] = useState<AppSettings>(() => ({ ...defaultSettings, ...load('app_settings', defaultSettings) }));
 
-  // Timer state - lives in context so it persists across navigation
+  // Timer state - timestamp-based so it survives page refreshes
+  const [timerRunning, setTimerRunning] = useState(() => load('timer_running', false));
+  const [timerStartTimestamp, setTimerStartTimestamp] = useState<number | null>(() => load('timer_start_ts', null));
+  const [timerAccumulated, setTimerAccumulated] = useState(() => load('timer_accumulated', 0));
   const [timerElapsed, setTimerElapsed] = useState(0);
-  const [timerRunning, setTimerRunning] = useState(false);
-  const [timerTaskId, setTimerTaskId] = useState<string | null>(null);
-  const [timerTaskName, setTimerTaskName] = useState<string | null>(null);
-  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [timerTaskId, setTimerTaskId] = useState<string | null>(() => load('timer_task_id', null));
+  const [timerTaskName, setTimerTaskName] = useState<string | null>(() => load('timer_task_name', null));
+  const rafRef = useRef<number | null>(null);
 
+  // Recalculate elapsed every animation frame when running
   useEffect(() => {
-    if (timerRunning) {
-      timerIntervalRef.current = setInterval(() => {
-        setTimerElapsed(prev => prev + 1);
-      }, 1000);
-    } else if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = null;
+    if (timerRunning && timerStartTimestamp) {
+      const tick = () => {
+        const now = Date.now();
+        const elapsed = timerAccumulated + Math.floor((now - timerStartTimestamp) / 1000);
+        setTimerElapsed(elapsed);
+        rafRef.current = requestAnimationFrame(tick);
+      };
+      rafRef.current = requestAnimationFrame(tick);
+    } else {
+      setTimerElapsed(timerAccumulated);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     }
     return () => {
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     };
-  }, [timerRunning]);
+  }, [timerRunning, timerStartTimestamp, timerAccumulated]);
+
+  // Persist timer state
+  useEffect(() => {
+    localStorage.setItem('timer_running', JSON.stringify(timerRunning));
+    localStorage.setItem('timer_start_ts', JSON.stringify(timerStartTimestamp));
+    localStorage.setItem('timer_accumulated', JSON.stringify(timerAccumulated));
+    localStorage.setItem('timer_task_id', JSON.stringify(timerTaskId));
+    localStorage.setItem('timer_task_name', JSON.stringify(timerTaskName));
+  }, [timerRunning, timerStartTimestamp, timerAccumulated, timerTaskId, timerTaskName]);
 
   const timerStart = useCallback((taskId: string, taskName: string) => {
     setTimerTaskId(taskId);
     setTimerTaskName(taskName);
-    setTimerElapsed(0);
+    setTimerAccumulated(0);
+    setTimerStartTimestamp(Date.now());
     setTimerRunning(true);
   }, []);
-  const timerPause = useCallback(() => setTimerRunning(false), []);
-  const timerResume = useCallback(() => setTimerRunning(true), []);
-  const timerStop = useCallback(() => {
+
+  const timerPause = useCallback(() => {
+    if (timerStartTimestamp) {
+      const extra = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+      setTimerAccumulated(prev => prev + extra);
+    }
+    setTimerStartTimestamp(null);
     setTimerRunning(false);
-    return timerElapsed;
-  }, [timerElapsed]);
+  }, [timerStartTimestamp]);
+
+  const timerResume = useCallback(() => {
+    setTimerStartTimestamp(Date.now());
+    setTimerRunning(true);
+  }, []);
+
+  const timerStop = useCallback(() => {
+    let total = timerAccumulated;
+    if (timerStartTimestamp) {
+      total += Math.floor((Date.now() - timerStartTimestamp) / 1000);
+    }
+    setTimerRunning(false);
+    setTimerStartTimestamp(null);
+    setTimerAccumulated(0);
+    return total;
+  }, [timerAccumulated, timerStartTimestamp]);
+
   const timerReset = useCallback(() => {
     setTimerElapsed(0);
     setTimerRunning(false);
+    setTimerStartTimestamp(null);
+    setTimerAccumulated(0);
     setTimerTaskId(null);
     setTimerTaskName(null);
   }, []);
+
   const formatTime = useCallback((secs: number) => {
     const h = Math.floor(secs / 3600);
     const m = Math.floor((secs % 3600) / 60);
@@ -106,6 +153,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isRunning: timerRunning,
     currentTaskId: timerTaskId,
     currentTaskName: timerTaskName,
+    startTimestamp: timerStartTimestamp,
     start: timerStart,
     pause: timerPause,
     resume: timerResume,

@@ -2,7 +2,7 @@ import { useApp } from '@/context/AppContext';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ColorPalette, paletteNames } from '@/types';
+import { ColorPalette, paletteNames, PlanningMode } from '@/types';
 import { Download, Trash2, Sun, Moon } from 'lucide-react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -37,27 +37,6 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Break timer */}
-        <div className="bg-card rounded-2xl p-4 border border-border shadow-sm space-y-3">
-          <h3 className="text-sm font-semibold text-card-foreground">Mola Zamanlayıcı</h3>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Zamanlayıcıyı göster</span>
-            <Switch checked={settings.askBreakTimer} onCheckedChange={v => updateSettings({ askBreakTimer: v })} />
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Varsayılan mola süresi</span>
-            <Select value={String(settings.defaultBreakDuration)} onValueChange={v => updateSettings({ defaultBreakDuration: parseInt(v) })}>
-              <SelectTrigger className="w-24 h-8 rounded-lg text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">5 dk</SelectItem>
-                <SelectItem value="10">10 dk</SelectItem>
-                <SelectItem value="15">15 dk</SelectItem>
-                <SelectItem value="30">30 dk</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
         {/* Planning Hours */}
         <div className="bg-card rounded-2xl p-4 border border-border shadow-sm space-y-3">
           <h3 className="text-sm font-semibold text-card-foreground">Planlama</h3>
@@ -67,7 +46,7 @@ export default function SettingsPage() {
               <Select value={String(settings.planningHourStart ?? 8)} onValueChange={v => updateSettings({ planningHourStart: parseInt(v) })}>
                 <SelectTrigger className="w-[76px] h-8 rounded-lg text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {Array.from({ length: 24 }, (_, i) => (
+                  {Array.from({ length: 25 }, (_, i) => (
                     <SelectItem key={i} value={String(i)}>{String(i).padStart(2, '0')}:00</SelectItem>
                   ))}
                 </SelectContent>
@@ -76,12 +55,27 @@ export default function SettingsPage() {
               <Select value={String(settings.planningHourEnd ?? 20)} onValueChange={v => updateSettings({ planningHourEnd: parseInt(v) })}>
                 <SelectTrigger className="w-[76px] h-8 rounded-lg text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {Array.from({ length: 24 }, (_, i) => (
+                  {Array.from({ length: 25 }, (_, i) => (
                     <SelectItem key={i} value={String(i)}>{String(i).padStart(2, '0')}:00</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          {/* Planning Mode */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Planlama Türü</span>
+            <Select
+              value={settings.planningMode ?? 'timestamp'}
+              onValueChange={(v: PlanningMode) => updateSettings({ planningMode: v })}
+            >
+              <SelectTrigger className="w-[160px] h-8 rounded-lg text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="timestamp">Zaman Damgasına Göre</SelectItem>
+                <SelectItem value="list">Görevlere Göre</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -92,7 +86,7 @@ export default function SettingsPage() {
             <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="exam">Sınav Hazırlığı</SelectItem>
-              <SelectItem value="university">Üniversite</SelectItem>
+              <SelectItem value="university">Üniversite (YKS)</SelectItem>
               <SelectItem value="productivity">Genel Üretkenlik</SelectItem>
               <SelectItem value="free">Serbest Kullanım</SelectItem>
             </SelectContent>
